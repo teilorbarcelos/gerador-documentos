@@ -235,6 +235,65 @@ button.danger:hover {
   background: rgba(255, 255, 255, 0.3);
 }
 
+/* ===== Validação: duplicatas e itens vazios ===== */
+
+.validation-status {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.validation-status.has-issues {
+  background: #fdf3f3;
+  color: #c0392b;
+  border: 1px solid #f5c6c6;
+}
+
+.card.duplicate {
+  border-left-color: #c0392b;
+  background: #fdf3f3;
+}
+
+.card.empty-above {
+  border-left-color: #d97706;
+  background: #fff8ec;
+}
+
+.card.duplicate.empty-above {
+  border-left-color: #b45309;
+}
+
+input.duplicate,
+textarea.duplicate {
+  border-color: #c0392b;
+  background: #fff5f5;
+}
+
+input.empty-above,
+textarea.empty-above {
+  border-color: #d97706;
+  background: #fffaf0;
+}
+
+.field-warning {
+  margin-top: 6px;
+  font-size: 12px;
+  border-radius: 4px;
+  padding: 4px 8px;
+  line-height: 1.4;
+}
+
+.field-warning.duplicate {
+  color: #c0392b;
+  background: #fdecea;
+}
+
+.field-warning.empty-above {
+  color: #92400e;
+  background: #fef3c7;
+}
+
 /* Dark mode */
 .dark {
   background: #1a1d23;
@@ -307,5 +366,48 @@ button.danger:hover {
 
 .dark .preview-frame {
   background: #fff;
+}
+
+/* Dark mode: validação */
+.dark .validation-status.has-issues {
+  background: #3b2222;
+  color: #ff938a;
+  border-color: #5d2520;
+}
+
+.dark .card.duplicate {
+  background: #3b2222;
+  border-left-color: #ff6b6b;
+}
+
+.dark .card.empty-above {
+  background: #332a16;
+  border-left-color: #fbbf24;
+}
+
+.dark .card.duplicate.empty-above {
+  border-left-color: #fcd34d;
+}
+
+.dark input.duplicate,
+.dark textarea.duplicate {
+  border-color: #ff6b6b;
+  background: #2a1a1a;
+}
+
+.dark input.empty-above,
+.dark textarea.empty-above {
+  border-color: #fbbf24;
+  background: #2b2416;
+}
+
+.dark .field-warning.duplicate {
+  color: #ff938a;
+  background: #3b2222;
+}
+
+.dark .field-warning.empty-above {
+  color: #fcd34d;
+  background: #332a16;
 }
 

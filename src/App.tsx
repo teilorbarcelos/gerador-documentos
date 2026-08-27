@@ -5,6 +5,7 @@ import { addChild, addRoot, removeNode, updateNode } from "./lib/doc";
 import { computeLabels } from "./lib/numbering";
 import { generateHtml } from "./lib/html";
 import { loadDark, loadDoc, saveDark, saveDoc } from "./lib/storage";
+import { useValidation } from "./useValidation";
 import {
   addColumn,
   addRow,
@@ -26,6 +27,31 @@ const DEFAULT_DOC: DocumentState = {
   nodes: [{ id: "root-title", type: "title", text: "", children: [] }],
 };
 
+export interface NodeWarnings {
+  duplicate: boolean;
+  emptyAbove: boolean;
+}
+
+const NO_WARNINGS: NodeWarnings = { duplicate: false, emptyAbove: false };
+
+function warningClasses(w: NodeWarnings): string {
+  const cls: string[] = [];
+  if (w.duplicate) cls.push("duplicate");
+  if (w.emptyAbove) cls.push("empty-above");
+  return cls.join(" ");
+}
+
+function warningMessage(w: NodeWarnings): string | null {
+  const parts: string[] = [];
+  if (w.duplicate) {
+    parts.push("Este texto já aparece em outro item do documento — verifique se a repetição é intencional.");
+  }
+  if (w.emptyAbove) {
+    parts.push("Item vazio acima de conteúdo preenchido — remova se não for necessário.");
+  }
+  return parts.length ? parts.join(" ") : null;
+}
+
 export function App() {
   const [dark, setDark] = useState<boolean>(() => loadDark());
   const [doc, setDoc] = useState<DocumentState>(() => loadDoc() ?? DEFAULT_DOC);
@@ -41,6 +67,32 @@ export function App() {
 
   const labels = useMemo(() => computeLabels(doc.nodes), [doc.nodes]);
   const html = useMemo(() => generateHtml(doc), [doc]);
+
+  const validation = useValidation(doc);
+
+  const warnings = useMemo<Record<string, NodeWarnings>>(() => {
+    const map: Record<string, NodeWarnings> = {};
+    for (const id of validation.duplicateIds) {
+      if (!map[id]) map[id] = { duplicate: false, emptyAbove: false };
+      map[id].duplicate = true;
+    }
+    for (const id of validation.emptyAboveFilledIds) {
+      if (!map[id]) map[id] = { duplicate: false, emptyAbove: false };
+      map[id].emptyAbove = true;
+    }
+    return map;
+  }, [validation.duplicateIds, validation.emptyAboveFilledIds]);
+
+  const summaryText = useMemo(() => {
+    const parts: string[] = [];
+    const dup = validation.duplicateIds.size;
+    if (dup > 0) parts.push(`${dup} ${dup === 1 ? "item repetido" : "itens repetidos"}`);
+    const empty = validation.emptyAboveFilledIds.size;
+    if (empty > 0) {
+      parts.push(`${empty} ${empty === 1 ? "item vazio" : "itens vazios"} acima de conteúdo`);
+    }
+    return parts.join(" · ");
+  }, [validation.duplicateIds, validation.emptyAboveFilledIds]);
 
   function patch(id: string, changes: Partial<DocNode>) {
     setDoc((d) => ({ ...d, nodes: updateNode(d.nodes, id, changes) }));
@@ -110,12 +162,7 @@ export function App() {
       </div>
 
       <div className="editor">
-        <input
-          className="doc-title-input"
-          placeholder="Título do documento (opcional)"
-          value={doc.title ?? ""}
-          onChange={(e) => setDoc((d) => ({ ...d, title: e.target.value }))}
-        />
+        <DocTitleField doc={doc} warnings={warnings["doc-title"] ?? NO_WARNINGS} setDoc={setDoc} />
         <div className="toolbar" style={{ marginTop: 12 }}>
           <button className="primary" onClick={() => addRootNode("title")}>
             + Título
@@ -125,11 +172,16 @@ export function App() {
           </button>
         </div>
 
+        {summaryText && (
+          <div className="validation-status has-issues">{summaryText}</div>
+        )}
+
         {doc.nodes.map((node) => (
           <RootNodeCard
             key={node.id}
             node={node}
             labels={labels}
+            warnings={warnings}
             onText={setText}
             onNoteIcon={setNoteIcon}
             onTable={setTable}
@@ -154,6 +206,7 @@ export function App() {
 interface CardProps {
   node: DocNode;
   labels: Record<string, string>;
+  warnings: Record<string, NodeWarnings>;
   onText: (id: string, text: string) => void;
   onNoteIcon: (id: string, icon: string) => void;
   onTable: (id: string, table: TableData) => void;
@@ -161,11 +214,38 @@ interface CardProps {
   onAddChild: (parentId: string, type: NodeType) => void;
 }
 
+function DocTitleField({
+  doc,
+  warnings,
+  setDoc,
+}: {
+  doc: DocumentState;
+  warnings: NodeWarnings;
+  setDoc: React.Dispatch<React.SetStateAction<DocumentState>>;
+}) {
+  const wClasses = warningClasses(warnings);
+  const msg = warningMessage(warnings);
+  return (
+    <div>
+      <input
+        className={`doc-title-input ${wClasses}`.trim()}
+        placeholder="Título do documento (opcional)"
+        value={doc.title ?? ""}
+        onChange={(e) => setDoc((d) => ({ ...d, title: e.target.value }))}
+      />
+      {msg && <div className={`field-warning ${wClasses}`}>{msg}</div>}
+    </div>
+  );
+}
+
 function RootNodeCard(props: CardProps) {
   const { node } = props;
   const label = props.labels[node.id] ?? "";
+  const w = props.warnings[node.id] ?? NO_WARNINGS;
+  const wClasses = warningClasses(w);
+  const msg = warningMessage(w);
   return (
-    <div className="card">
+    <div className={`card ${wClasses}`.trim()}>
       <div className="card-title">
         <span className="label-badge">{label || "—"}</span>
         <span>Título</span>
@@ -175,10 +255,12 @@ function RootNodeCard(props: CardProps) {
       </div>
       <input
         type="text"
+        className={wClasses || undefined}
         placeholder="Texto do título (ex.: OBJETO)"
         value={node.text ?? ""}
         onChange={(e) => props.onText(node.id, e.target.value)}
       />
+      {msg && <div className={`field-warning ${wClasses}`}>{msg}</div>}
       <div className="row">
         <button onClick={() => props.onAddChild(node.id, "item")}>+ Item</button>
         <button onClick={() => props.onAddChild(node.id, "note")}>+ Nota explicativa</button>
@@ -204,8 +286,11 @@ function NumberedCard(props: CardProps & { depth: number }) {
   const label = props.labels[node.id] ?? "";
   const name = depth === 2 ? "Item" : `Subitem (nível ${depth})`;
   const depthClass = depth === 2 ? "item" : depth === 3 ? "subitem" : "deep";
+  const w = props.warnings[node.id] ?? NO_WARNINGS;
+  const wClasses = warningClasses(w);
+  const msg = warningMessage(w);
   return (
-    <div className={`card ${depthClass}`} style={{ marginLeft: (depth - 1) * 16 }}>
+    <div className={`card ${depthClass} ${wClasses}`.trim()} style={{ marginLeft: (depth - 1) * 16 }}>
       <div className="card-title">
         <span className="label-badge">{label || "—"}</span>
         <span>{name}</span>
@@ -214,10 +299,12 @@ function NumberedCard(props: CardProps & { depth: number }) {
         </button>
       </div>
       <textarea
+        className={wClasses || undefined}
         placeholder={`Texto do ${name.toLowerCase()}`}
         value={node.text ?? ""}
         onChange={(e) => props.onText(node.id, e.target.value)}
       />
+      {msg && <div className={`field-warning ${wClasses}`}>{msg}</div>}
       <div className="row">
         {depth < MAX_DEPTH && (
           <button onClick={() => props.onAddChild(node.id, "subitem")}>+ Subitem</button>
@@ -235,8 +322,11 @@ function NumberedCard(props: CardProps & { depth: number }) {
 function NoteCard(props: CardProps) {
   const { node } = props;
   const isPreset = NOTE_ICONS.some((i) => i.value === node.noteIcon);
+  const w = props.warnings[node.id] ?? NO_WARNINGS;
+  const wClasses = warningClasses(w);
+  const msg = warningMessage(w);
   return (
-    <div className="card note">
+    <div className={`card note ${wClasses}`.trim()}>
       <div className="card-title">
         <span>Nota explicativa</span>
         <button className="danger" onClick={() => props.onRemove(node.id)}>
@@ -270,10 +360,12 @@ function NoteCard(props: CardProps) {
         )}
       </div>
       <textarea
+        className={wClasses || undefined}
         placeholder="Mensagem explicativa (ex.: Descreva objetivamente...)"
         value={node.text ?? ""}
         onChange={(e) => props.onText(node.id, e.target.value)}
       />
+      {msg && <div className={`field-warning ${wClasses}`}>{msg}</div>}
     </div>
   );
 }
@@ -282,9 +374,12 @@ function TableCard(props: CardProps) {
   const { node } = props;
   const table = node.table!;
   const label = props.labels[node.id] ?? "";
+  const w = props.warnings[node.id] ?? NO_WARNINGS;
+  const wClasses = warningClasses(w);
+  const msg = warningMessage(w);
 
   return (
-    <div className="card table">
+    <div className={`card table ${wClasses}`.trim()}>
       <div className="card-title">
         <span>{table.numbered ? `Tabela (${label})` : "Tabela"}</span>
         <button className="danger" onClick={() => props.onRemove(node.id)}>
@@ -293,10 +388,12 @@ function TableCard(props: CardProps) {
       </div>
       <input
         type="text"
+        className={wClasses || undefined}
         placeholder="Legenda da tabela (opcional)"
         value={table.caption ?? ""}
         onChange={(e) => props.onTable(node.id, setCaption(table, e.target.value))}
       />
+      {msg && <div className={`field-warning ${wClasses}`}>{msg}</div>}
       <div className="checkbox-line">
         <input
           type="checkbox"
